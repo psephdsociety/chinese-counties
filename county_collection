@@ -1,0 +1,110 @@
+
+import bs4
+from bs4 import BeautifulSoup
+import lxml
+import urllib2
+import pandas
+import pinyin
+import time
+import socket
+
+timeout = 2000
+# timeout en seconds
+socket.setdefaulttimeout(timeout)
+
+for y in range(2009, 2014):
+  year=str(y)
+  print('Starting extraction for year ' +year + ' at time: '+ time.strftime("%a, %d %b %Y %H:%M:%S +0000", time.localtime()))
+  master= 'http://www.stats.gov.cn/zjtj/tjbz/tjyqhdmhcxhfdm/'+year+'/'
+
+  provids= ('11', '12', '13', '14', '15', '21', '22', '23', '31', '32', '33', '34', '35', '36', '37', '41', '42', '43', '44', '45', '46', '50', '51', '52', '53', '54', '61', '62', '63', '64', '65')
+  provnamesen=('Beijing', 'Tianjin', 'Hebei', 'Shanxi', 'Inner Mongolia', 'Liaoning', 'Jilin', 'Heilongjiang', 'Shanghai', 'Jiangsu', 'Zhejiang', 'Anhui', 'Fujian', 'Jiangxi', 'Shandong', 'Henan', 'Hubei', 'Hunan', 'Guangdong', 'Guangxi', 'Hainan', 'Chongqing', 'Sichuan', 'Guizhou', 'Yunnan', 'Tibet', 'Shaanxi', 'Gansu', 'Qinghai', 'Ningxia', 'Xinjiang')
+  provnameszh=('北京'.decode('utf-8'), '天津'.decode('utf-8'), '河北'.decode('utf-8'),
+               '山西'.decode('utf-8'), '内蒙古'.decode('utf-8'), '辽宁'.decode('utf-8'),
+               '吉林'.decode('utf-8'), '黑龙江'.decode('utf-8'), '上海'.decode('utf-8'),
+               '江苏'.decode('utf-8'), '浙江'.decode('utf-8'), '安徽'.decode('utf-8'),
+               '福建'.decode('utf-8'), '江西'.decode('utf-8'), '山东'.decode('utf-8'),
+               '河南'.decode('utf-8'), '湖北'.decode('utf-8'), '湖南'.decode('utf-8'),
+               '广东'.decode('utf-8'), '广西'.decode('utf-8'), '海南'.decode('utf-8'),
+               '重庆'.decode('utf-8'), '四川'.decode('utf-8'), '贵州'.decode('utf-8'),
+               '云南'.decode('utf-8'), '西藏'.decode('utf-8'), '陕西'.decode('utf-8'),
+               '甘肃'.decode('utf-8'), '青海'.decode('utf-8'), '宁夏'.decode('utf-8'), '新疆'.decode('utf-8'))
+  dicproven=dict(zip(provids,provnamesen))
+  dicprovzh=dict(zip(provids,provnameszh))
+
+  countydfA =[]
+  countydfB =[]
+  countydfC =[]
+  countydfD =[]
+  countydfE =[]
+  countydfF =[]
+  countydfG =[]
+  countydfH =[]
+  countydfI =[]
+
+  citydfA =[]
+  citydfB =[]
+  citydfC =[]
+  citydfD =[]
+  citydfE =[]
+  citydfF =[]
+
+  DICcities=dict()
+
+  for prov in provids :
+    url= master + prov + '.html'
+
+    page = urllib2.urlopen(url).read()
+    soup= BeautifulSoup(page, 'lxml')
+    mytable = soup.find('table', {'class': 'citytable'})
+
+    rows = mytable.find_all('tr')
+
+    cities= [tr.find_all('td')[1].find(text=True) for tr in rows[1:]]
+    citiespy= [pinyin.get(tr.find_all('td')[1].find(text=True)) for tr in rows[1:]]
+    citiesid= [tr.find('td').find(text=True)[0:4] for tr in rows[1:]]
+    citieshtml = [tr.find('td').find('a').get('href') for tr in rows[1:]]
+    diccityid = dict(zip(tuple(citieshtml),tuple(citiesid)))
+    diccityname = dict(zip(tuple(citieshtml),tuple(cities)))
+    diccityidname = dict(zip(tuple(citiesid),tuple(cities)))
+
+    DICcities.update(diccityidname)
+
+    citydfA+= [prov]*(len(rows)-1)
+    citydfB+= [dicprovzh[prov]]*(len(rows)-1)
+    citydfC+= [dicproven[prov]]*(len(rows)-1)
+    citydfD+= citiesid
+    citydfE+= cities
+    citydfF+= citiespy
+
+    for city in citieshtml :
+      miniurl = master + city
+      page2 = urllib2.urlopen(miniurl).read()
+      minisoup= BeautifulSoup(page2, 'lxml')
+
+      minirows = minisoup.find_all('tr', {'class':'countytr'}) + minisoup.find_all('tr', {'class':'towntr'})
+      counties= [tr.find_all('td')[1].find(text=True) for tr in minirows]
+      countiespy= [pinyin.get(tr.find_all('td')[1].find(text=True)) if tr.find_all('td')[1].find(text=True)!=None else None for tr in minirows]
+      countiesid= [tr.find('td').find(text=True)[0:6] for tr in minirows]
+
+      if len(minirows)==0:
+        print('City ' +city+ ' has no counties')
+      
+      countydfA+= [prov]*(len(minirows))
+      countydfB+= [dicprovzh[prov]]*(len(minirows))
+      countydfC+= [dicproven[prov]]*(len(minirows))
+      countydfD+= [diccityid[city]]*(len(minirows))
+      countydfE+= [diccityname[city]]*(len(minirows))
+      countydfF+= [pinyin.get(diccityname[city])]*(len(minirows))
+      countydfG+= countiesid
+      countydfH+= counties
+      countydfI+= countiespy
+      
+  d= {'A': countydfA, 'B': countydfB, 'C': countydfC, 'D': countydfD, 'E': countydfE, 'F': countydfF, 'G': countydfG, 'H': countydfH, 'I': countydfI }
+  df = pandas.DataFrame(d)
+  csv1=datafolder + year + 'countylist.csv'
+  df.to_csv(csv1, encoding='utf-8')
+  d2= {'A': citydfA, 'B': citydfB, 'C': citydfC, 'D': citydfD, 'E': citydfE, 'F': citydfF}
+  df2 = pandas.DataFrame(d2)
+  csv2=datafolder+ year +'citylist.csv'
+  df2.to_csv(csv2, encoding='utf-8')
